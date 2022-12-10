@@ -1,5 +1,8 @@
 from math import exp, log, isclose
 import random, sys
+import numpy as np
+import optimal
+
 
 class Item(object):
     def __init__(self, value, weight):
@@ -7,7 +10,7 @@ class Item(object):
         self.weight = weight
         self.cost = value / weight
         self.accept = 0
-    
+
 class ThresholdKnapsack(object):
     def __init__(self, pmin, pmax):
         self.pmin = pmin
@@ -24,7 +27,7 @@ class ThresholdKnapsack(object):
             self.phi = self.pmin*exp(self.y/(self.beta-1))
 
     def add_item(self, item):
-        if item.cost < self.phi:
+        if item.cost < self.phi or self.y + item.weight > 1:
             item.accept = 0
         else: 
             # hard check, in case of floating point error
@@ -65,50 +68,52 @@ def avg(list):
     return sum(list)/len(list)
 
 def main():
-    N = 10000000 #number of items total
-    M = 10 #number of experiments
-    N_trial = 250000 #sequence length
-    weight_L = 1e-8 #sys.float_info.min
-    weight_H = 1e-5
-    value_L = 1e-10
-    value_H = 1e-8
-    pmin = value_L/weight_H
-    pmax = value_H/weight_L
+    N = 10000 #number of items total //try 10000
+    M = 5 #number of experiments
+
+    pmin = 10 #try 10
+    pmax = 1000 #try 1000
+
+    w_max = 0.001 #try 0.001
+
+    #only need weight_max (for inf case), pmin, pmax
 
     total = []
-    trial_total = []
-
     opts = []
     algs = []
 
     Knapsack = ThresholdKnapsack(pmin, pmax)
 
-    # init world
-    for _ in range(N):
-        value = random.uniform(value_L, value_H)
-        weight = random.uniform(weight_L, weight_H)
-        if weight == 0:
-            print("rounding error, setting weight to e")
-            weight = sys.float_info.min
-        item = Item(value, weight)
-        total.append(item)
-
     # experimental trials
-    for _ in range(M):
-        for i in range(N_trial):
-            tmp_item = random.choice(total)
-            Knapsack.add_item(tmp_item)
-            trial_total.append(tmp_item)
-        print(optimal_value(trial_total), Knapsack.total_cost())
-        opts.append(optimal_value(trial_total)[0])
+    for s in range(M):
+        generator = np.random.RandomState(s)
+        print(f"building world: {i}")
+        # build world
+        for i in range(N):
+            value = generator.rand() #uniform [0,1]
+            # weight is either value/pmax, or min(w_max, value/pmin)
+            w_u = min(w_max,value/pmax)
+            w_l = value/pmax
+            weight = generator.rand() * (w_u - w_l) + w_l
+
+            item = Item(value, weight)
+            total.append(item)
+        print(f"world build complete")
+        print(f"adding items to knapsack")
+        # add items
+        for i in range(N):
+            Knapsack.add_item(total[i])
+        
+        # print result
+        optimal_solver = optimal.offline_knapsack(total)
+        print(optimal_solver[0], Knapsack.total_cost())
+        opts.append(optimal_solver[0])
         algs.append(Knapsack.total_cost()[0])
         Knapsack.clear(pmin, pmax)
-        trial_total = []
-    print("alpha: " + str(max(opts)/min(algs)), "alpha_theoretic >= ", 1+log((pmax/pmin)))
+        total = []
+    print("alpha: " + str(avg(opts)/avg(algs)), "alpha_theoretic >= ", 1+log((pmax/pmin)))
 
 
-
-    
 
 
 
