@@ -3,13 +3,7 @@ import random, sys
 import numpy as np
 import optimal
 
-
-class Item(object):
-    def __init__(self, value, weight):
-        self.value = value
-        self.weight = weight
-        self.cost = value / weight
-        self.accept = 0
+from data import Item
 
 class ThresholdKnapsack(object):
     def __init__(self, pmin, pmax):
@@ -68,7 +62,7 @@ def avg(list):
     return sum(list)/len(list)
 
 def main():
-    N = 10000 #number of items total //try 10000
+    N = 50000 #number of items total //try 10000
     M = 5 #number of experiments
 
     pmin = 10 #try 10
@@ -85,9 +79,9 @@ def main():
     Knapsack = ThresholdKnapsack(pmin, pmax)
 
     # experimental trials
-    for s in range(M):
+    for s in range(1):
         generator = np.random.RandomState(s)
-        print(f"building world: {i}")
+        print(f"building world: {s}")
         # build world
         for i in range(N):
             value = generator.rand() #uniform [0,1]
@@ -95,7 +89,8 @@ def main():
             w_u = min(w_max,value/pmax)
             w_l = value/pmax
             weight = generator.rand() * (w_u - w_l) + w_l
-
+            assert weight <= w_max
+            assert weight >= w_l
             item = Item(value, weight)
             total.append(item)
         print(f"world build complete")
@@ -106,6 +101,7 @@ def main():
         
         # print result
         optimal_solver = optimal.offline_knapsack(total)
+        #optimal_solver = optimal.greedy_solver(total)
         print(optimal_solver[0], Knapsack.total_cost())
         opts.append(optimal_solver[0])
         algs.append(Knapsack.total_cost()[0])
