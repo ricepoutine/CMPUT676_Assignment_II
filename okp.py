@@ -1,117 +1,60 @@
-from math import exp, log, isclose
-import random, sys
+from math import log
+import solvers
+from helper import get_values, avg
+from data import data_generator
+from os import makedirs
 import numpy as np
-import optimal
 
-from data import Item
-
-class ThresholdKnapsack(object):
-    def __init__(self, pmin, pmax):
-        self.pmin = pmin
-        self.pmax = pmax
-        self.phi = pmin
-        self.beta = 1/(1+log((self.pmax/self.pmin)))
-        self.knapsack = []
-        self.y = 0
-
-    def update_phi(self):
-        if (0 <= self.y < self.beta):
-            self.phi = self.pmin
-        elif (self.beta <= self.y <= 1):
-            self.phi = self.pmin*exp(self.y/(self.beta-1))
-
-    def add_item(self, item):
-        if item.cost < self.phi or self.y + item.weight > 1:
-            item.accept = 0
-        else: 
-            # hard check, in case of floating point error
-            if self.y + item.weight < 1:
-                item.accept = 1
-        self.y += item.weight*item.accept
-        self.update_phi()
-        self.knapsack.append(item)
-    
-    def total_cost(self):
-        cost = 0
-        capacity = 0
-        for item in self.knapsack:
-            if item.accept == 1:
-                cost += item.cost
-                capacity += item.weight
-        return cost, capacity
-    
-    def clear(self, pmin, pmax):
-        self.pmin = pmin
-        self.pmax = pmax
-        self.phi = pmin
-        self.beta = 1/(1+log((self.pmax/self.pmin)))
-        self.knapsack = []
-        self.y = 0
-
-def optimal_value(total):
-    value = 0
-    capacity = 0
-    sortedTotal = sorted(total, key=lambda x: x.cost, reverse=True)
-    for item in sortedTotal:
-        if (capacity + item.weight) < 1: 
-            value += item.cost
-            capacity += item.weight
-    return value, capacity
-
-def avg(list):
-    return sum(list)/len(list)
 
 def main():
-    N = 50000 #number of items total //try 10000
+    N = 100000 #number of items total
     M = 5 #number of experiments
-
-    pmin = 10 #try 10
-    pmax = 1000 #try 1000
-
-    w_max = 0.001 #try 0.001
-
     #only need weight_max (for inf case), pmin, pmax
+    pmin_list = [10]
+    pmax_list = [1000]
+    w_max_list = [0.1, 0.01, 0.001]
 
-    total = []
-    opts = []
-    algs = []
+    for x, w in enumerate(pmin_list):
+        offline = []
+        online = []
+        ratio = []
+        opts = []
+        algs = []
+        opts_var = []
+        algs_var = []
+        w_max = w_max_list[x]
+        pmin = pmin_list[0]
+        pmax = pmax_list[0]
+        # experimental trials for given pmin, pmax, wmax, and N
+        for s in range(M):
+            OnlineKnapsack = solvers.ThresholdKnapsack(pmin, pmax)
+            print(f"building world: {s}")
+            items = data_generator(N, w_max, pmin, pmax, s)
+            print(f"world build complete")
+            print(f"adding items to knapsack")
+            for i in range(len(items)):
+                OnlineKnapsack.add_item(items[i])
+            optimal_solver = solvers.LP_knapsack(items)
+            offline_total = get_values(items, optimal_solver)
+            online_total = get_values(items, OnlineKnapsack.decisions)
+            print(offline_total, online_total)
+            opts.append(offline_total[0])
+            algs.append(online_total[0])
+        empirical_ratio = avg(opts)/avg(algs)
+        opts_var.append(np.var(opts))
+        algs_var.append(np.var(algs))
+        offline.append(avg(opts))
+        online.append(avg(algs))
+        ratio.append(empirical_ratio)
+        theoretical_ratio = 1+log((pmax/pmin))
+        print("alpha: " + str(empirical_ratio), "alpha_theoretic >= ", theoretical_ratio)
 
-    Knapsack = ThresholdKnapsack(pmin, pmax)
-
-    # experimental trials
-    for s in range(1):
-        generator = np.random.RandomState(s)
-        print(f"building world: {s}")
-        # build world
-        for i in range(N):
-            value = generator.rand() #uniform [0,1]
-            # weight is either value/pmax, or min(w_max, value/pmin)
-            w_u = min(w_max,value/pmax)
-            w_l = value/pmax
-            weight = generator.rand() * (w_u - w_l) + w_l
-            assert weight <= w_max
-            assert weight >= w_l
-            item = Item(value, weight)
-            total.append(item)
-        print(f"world build complete")
-        print(f"adding items to knapsack")
-        # add items
-        for i in range(N):
-            Knapsack.add_item(total[i])
-        
-        # print result
-        optimal_solver = optimal.offline_knapsack(total)
-        #optimal_solver = optimal.greedy_solver(total)
-        print(optimal_solver[0], Knapsack.total_cost())
-        opts.append(optimal_solver[0])
-        algs.append(Knapsack.total_cost()[0])
-        Knapsack.clear(pmin, pmax)
-        total = []
-    print("alpha: " + str(avg(opts)/avg(algs)), "alpha_theoretic >= ", 1+log((pmax/pmin)))
-
-
-
-
+        file_name = f'pmin{pmin}'
+        makedirs('output', exist_ok=True)
+        with open(f'output/{file_name}.csv', 'w') as f:
+            f.write('offline,online,ratio,opt_var, alg_var\n')
+            for i in range(len(online)):
+                f.write(f'{offline[i]},{online[i]},{ratio[i]},{opts_var[i]},{algs_var[i]}')
 
 if __name__ == "__main__":
     main()
